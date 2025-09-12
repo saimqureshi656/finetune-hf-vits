@@ -1091,15 +1091,30 @@ def main():
             # print(f"batch {step}, process{accelerator.process_index}, waveform {(batch['waveform'].shape)}, tokens {(batch['input_ids'].shape)}... ")
             with accelerator.accumulate(model, discriminator):
                 # forward through model
+                valid_batch = {}
+                for key, value in batch.items():
+                    if isinstance(value, torch.Tensor):
+                        if key == "input_ids":
+            # Apply .long() fix for input_ids
+                            valid_batch[key] = value.long()
+                        else:
+                            valid_batch[key] = value
+                    else:
+                        valid_batch[key] = value
+
+# Skip batch if input_ids is empty
+                if "input_ids" not in valid_batch or valid_batch["input_ids"].size(0) == 0:
+                    continue
+
                 model_outputs = model(
-                    input_ids=batch["input_ids"],
-                    attention_mask=batch["attention_mask"],
-                    labels=batch["labels"],
-                    labels_attention_mask=batch["labels_attention_mask"],
-                    speaker_id=batch["speaker_id"],
+                    input_ids=valid_batch["input_ids"],
+                    attention_mask=valid_batch["attention_mask"],
+                    labels=valid_batch["labels"],
+                    labels_attention_mask=valid_batch["labels_attention_mask"],
+                    speaker_id=valid_batch["speaker_id"],
                     return_dict=True,
                     monotonic_alignment_function=maximum_path,
-                )
+                )    
 
                 mel_scaled_labels = batch["mel_scaled_input_features"]
                 mel_scaled_target = slice_segments(mel_scaled_labels, model_outputs.ids_slice, model_segment_size)
