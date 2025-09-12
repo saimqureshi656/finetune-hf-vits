@@ -1373,14 +1373,19 @@ class VitsAttention(nn.Module):
 
     def _absolute_position_to_relative_position(self, x):
         batch_heads, length, _ = x.size()
-
-        # Pad along column
+    
+        # Add dimension check to prevent padding errors
+        if length == 0 or x.size(-1) == 0 or length - 1 < 0:
+            # Return zeros with correct shape if input is empty or invalid
+            return torch.zeros(batch_heads, length, max(1, length), device=x.device, dtype=x.dtype)
+    
+        # Padd along column
         x = nn.functional.pad(x, [0, length - 1, 0, 0, 0, 0])
         x_flat = x.view([batch_heads, length**2 + length * (length - 1)])
-
         # Add 0's in the beginning that will skew the elements after reshape
         x_flat = nn.functional.pad(x_flat, [length, 0, 0, 0])
-        x_final = x_flat.view([batch_heads, length, 2 * length])[:, :, 1:]
+        x_final = x_flat.view([batch_heads, length, 2 * length - 1])
+        x_final = x_final[:, :, :length]
         return x_final
 
 
