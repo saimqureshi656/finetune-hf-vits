@@ -1372,21 +1372,76 @@ class VitsAttention(nn.Module):
         return x_final
 
     def _absolute_position_to_relative_position(self, x):
-        batch_heads, length, _ = x.size()
+        batch_heads, length, width = x.size()
     
-        # Add dimension check to prevent padding errors
-        if length == 0 or x.size(-1) == 0 or length - 1 < 0:
-            # Return zeros with correct shape if input is empty or invalid
-            return torch.zeros(batch_heads, length, max(1, length), device=x.device, dtype=x.dtype)
+    # Handle edge cases
+        if length == 0 or width == 0:
+            target_width = max(1, 2 * length - 1) if length > 0 else 1
+            return torch.zeros(batch_heads, length, target_width, device=x.device, dtype=x.dtype)
     
-        # Padd along column
-        x = nn.functional.pad(x, [0, length - 1, 0, 0, 0, 0])
-        x_flat = x.view([batch_heads, length**2 + length * (length - 1)])
-        # Add 0's in the beginning that will skew the elements after reshape
-        x_flat = nn.functional.pad(x_flat, [length, 0, 0, 0])
-        x_final = x_flat.view([batch_heads, length, 2 * length - 1])
-        x_final = x_final[:, :, :length]
-        return x_final
+        if length == 1:
+            return torch.zeros(batch_heads, 1, 1, device=x.device, dtype=x.dtype)
+    
+    # Ensure input is square (length x length)
+        if width != length:
+        # If not square, pad or truncate to make it square
+            if width < length:
+                x = nn.functional.pad(x, [0, length - width, 0, 0, 0, 0])
+            else:
+                x = x[:, :, :length]
+    
+    # Step 1: Pad columns (right side) with (length-1) zeros
+        x_padded = nn.functional.pad(x, [0, length - 1, 0, 0, 0, 0])
+    # Shape after padding: [batch_heads, length, 2*length-1]
+    
+    # Step 2: Flatten for manipulation
+        x_flat = x_padded.reshape([batch_heads, -1])
+    # Shape: [batch_heads, length * (2*length-1)]
+    
+    # Step 3: Add padding at the beginning
+        x_flat_padded = nn.functional.pad(x_flat, [length, 0, 0, 0])
+    # Shape: [batch_heads, length + length * (2*length-1)]
+    
+    # Step 4: Reshape to extract diagonals
+        total_elements = length + length * (2 * length - 1)
+    
+    # We need to reshape this carefully to extract the right elements
+    # The goal is to get shape [batch_heads, length, 2*length-1]
+        try:
+        # Calculate the number of columns we can fit
+            cols_needed = 2 * length - 1
+            rows_available = total_elements // cols_needed
+        
+            if rows_available >= length:
+                x_reshaped = x_flat_padded.view([batch_heads, rows_available, cols_needed])
+                x_final = x_reshaped[:, :length, :]
+            else:
+            # Fallback: create the result directly
+                x_final = torch.zeros(batch_heads, length, 2 * length - 1, device=x.device, dtype=x.dtype)
+            
+            # Extract diagonals manually
+                for i in range(length):
+                    for j in range(2 * length - 1):
+                        rel_pos = j - (length - 1)  # Convert to relative position
+                        abs_pos = i + rel_pos  # Convert to absolute position
+                        if 0 <= abs_pos < length:
+                            x_final[:, i, j] = x[:, i, abs_pos]
+        
+            return x_final
+        
+        except RuntimeError:
+        # If reshaping fails, use the manual approach
+            x_final = torch.zeros(batch_heads, length, 2 * length - 1, device=x.device, dtype=x.dtype)
+        
+        # Extract diagonals manually
+            for i in range(length):
+                for j in range(2 * length - 1):
+                    rel_pos = j - (length - 1)  # Convert to relative position (-length+1 to length-1)
+                    abs_pos = i + rel_pos  # Convert to absolute position
+                    if 0 <= abs_pos < length:
+                        x_final[:, i, j] = x[:, i, abs_pos]
+        
+            return x_final
 
 
 class VitsFeedForward(nn.Module):
