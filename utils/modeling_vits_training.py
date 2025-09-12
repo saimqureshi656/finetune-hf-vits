@@ -1353,26 +1353,27 @@ class VitsAttention(nn.Module):
         slice_end_position = slice_start_position + 2 * length - 1
         return relative_embeddings[:, slice_start_position:slice_end_position]
 
-    def _relative_position_to_absolute_position(self, x):
+
+def _relative_position_to_absolute_position(self, x):
         batch_heads, length, _ = x.size()
-    
-    # Add dimension check to prevent padding errors
+        
+        # Add dimension check to prevent padding errors
         if length == 0 or x.size(-1) == 0:
-        # Return zeros with correct shape if input is empty
+            # Return zeros with correct shape if input is empty
             return torch.zeros(batch_heads, length, length, device=x.device, dtype=x.dtype)
-    
-    # Concat columns of pad to shift from relative to absolute indexing.
+        
+        # Concat columns of pad to shift from relative to absolute indexing.
         x = nn.functional.pad(x, [0, 1, 0, 0, 0, 0])
-    # Concat extra elements so to add up to shape (len+1, 2*len-1).
+        # Concat extra elements so to add up to shape (len+1, 2*len-1).
         x_flat = x.view([batch_heads, length * 2 * length])
         x_flat = nn.functional.pad(x_flat, [0, length - 1, 0, 0])
-    # Reshape and slice out the padded elements.
+        # Reshape and slice out the padded elements.
         x_final = x_flat.view([batch_heads, length + 1, 2 * length - 1])
         x_final = x_final[:, :length, length - 1 :]
         return x_final
 
     def _absolute_position_to_relative_position(self, x):
-    """Emergency fix: just return zeros to avoid slow loops"""
+        """Emergency fix: just return zeros to avoid slow loops"""
         batch_heads, length, width = x.size()
         target_width = max(1, 2 * length - 1) if length > 0 else 1
         return torch.zeros(batch_heads, length, target_width, device=x.device, dtype=x.dtype)
