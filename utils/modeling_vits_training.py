@@ -1279,8 +1279,14 @@ class VitsAttention(nn.Module):
         if self.window_size is not None:
             key_relative_embeddings = self._get_relative_embeddings(self.emb_rel_k, src_len)
             relative_logits = torch.matmul(query_states, key_relative_embeddings.transpose(-2, -1))
-            rel_pos_bias = self._relative_position_to_absolute_position(relative_logits)
-            attn_weights += rel_pos_bias
+    
+    # Validate input dimensions before relative position calculation
+            if query_states.size(0) == 0 or query_states.size(1) == 0 or relative_logits.size(1) == 0:
+        # Skip relative position bias for empty inputs
+                pass
+            else:
+                rel_pos_bias = self._relative_position_to_absolute_position(relative_logits)
+                attn_weights += rel_pos_bias
 
         if attention_mask is not None:
             if attention_mask.size() != (bsz, 1, tgt_len, src_len):
@@ -1349,15 +1355,18 @@ class VitsAttention(nn.Module):
 
     def _relative_position_to_absolute_position(self, x):
         batch_heads, length, _ = x.size()
-
-        # Concat columns of pad to shift from relative to absolute indexing.
+    
+    # Add dimension check to prevent padding errors
+        if length == 0 or x.size(-1) == 0:
+        # Return zeros with correct shape if input is empty
+            return torch.zeros(batch_heads, length, length, device=x.device, dtype=x.dtype)
+    
+    # Concat columns of pad to shift from relative to absolute indexing.
         x = nn.functional.pad(x, [0, 1, 0, 0, 0, 0])
-
-        # Concat extra elements so to add up to shape (len+1, 2*len-1).
+    # Concat extra elements so to add up to shape (len+1, 2*len-1).
         x_flat = x.view([batch_heads, length * 2 * length])
         x_flat = nn.functional.pad(x_flat, [0, length - 1, 0, 0])
-
-        # Reshape and slice out the padded elements.
+    # Reshape and slice out the padded elements.
         x_final = x_flat.view([batch_heads, length + 1, 2 * length - 1])
         x_final = x_final[:, :length, length - 1 :]
         return x_final
