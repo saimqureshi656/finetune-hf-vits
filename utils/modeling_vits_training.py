@@ -1354,7 +1354,7 @@ class VitsAttention(nn.Module):
         return relative_embeddings[:, slice_start_position:slice_end_position]
 
 
-def _relative_position_to_absolute_position(self, x):
+    def _relative_position_to_absolute_position(self, x):
         batch_heads, length, _ = x.size()
         
         # Add dimension check to prevent padding errors
