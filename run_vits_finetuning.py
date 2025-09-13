@@ -1294,6 +1294,15 @@ def main():
                     print(
                         f"VALIDATION - batch {step}, process{accelerator.process_index}, waveform {(batch['waveform'].shape)}, tokens {(batch['input_ids'].shape)}... "
                     )
+                    if (batch["input_ids"].size(0) == 0 or 
+                        batch["input_ids"].size(1) == 0 or 
+                        torch.all(batch["attention_mask"] == 0)):
+                        print(f"VALIDATION - Skipping empty batch {step}")
+                        continue
+
+# Apply dtype fix for validation
+                    batch["input_ids"] = batch["input_ids"].long()
+                    
                     with torch.no_grad():
                         model_outputs_train = model(
                             input_ids=batch["input_ids"],
@@ -1396,6 +1405,15 @@ def main():
                 print(
                     f"VALIDATION - batch {step}, process{accelerator.process_index}, waveform {(batch['waveform'].shape)}, tokens {(batch['input_ids'].shape)}... "
                 )
+                if (batch["input_ids"].size(0) == 0 or 
+                    batch["input_ids"].size(1) == 0 or 
+                    torch.all(batch["attention_mask"] == 0)):
+                    print(f"FINAL VALIDATION - Skipping empty batch {step}")
+                    continue
+    
+                # Apply dtype fix for final validation
+                batch["input_ids"] = batch["input_ids"].long()
+   
                 with torch.no_grad():
                     model_outputs_train = model(
                         input_ids=batch["input_ids"],
